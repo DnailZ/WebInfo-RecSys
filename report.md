@@ -51,40 +51,15 @@ Funk-SVD 借鉴线性回归的思想，通过最小化观察数据的平方来�
 
 其中 $\mu$ 为整个网站的平均评分； $b_u$ 为用户的评分偏置，$b_i$ 为项目的被评分偏置。
 
-#### 4.1.4 用 embedding 的方法实现矩阵分解
-
-将用户和电影通过 embedding 层压缩到 k 维度向量，然后进行向量点乘，得到用户对电影的预测评分。
-
-参考架构图如下：
-
-![embedding](pics/embedding.jpg)
-
-我们使用 pytorch 来实现：
-
-```python
-class DualEmbedding(nn.Module):
-    def __init__(self, user_n, movie_n, k):
-        super(DualEmbedding, self).__init__()
-        self.user_embed = nn.Embedding(user_n, k)
-        self.user_bias = nn.Embedding(user_n, 1)
-        self.movie_embed = nn.Embedding(movie_n, k)
-        self.movie_bias = nn.Embedding(movie_n, 1)
-    
-    def forward(self, user, movie):
-        user_feat = self.user_embed(user)
-        movie_feat = self.movie_embed(movie)
-        dot_product = torch.sum(user_feat * movie_feat, dim=-1)
-        result = dot_product + user_bias + movie_bias
-        return (torch.sigmoid(dot_product), self.l1_loss())
-```
-
 ### 4.2 算法实现
 
 #### 4.2.1 自动微分梯度下降
 
 上面的算法需要计算每一个参数所对应的梯度，需要进行非常复杂的计算。为了简化这一过程，我们可以借助深度学习框架帮助我们完成自动微分和梯度下降的过程。
 
-利用深度学习框架 PyTorch，我们可以非常方便地使用各种优化器，比如，我们可以使用随机梯度下降优化器来优化我们的学习结果。
+使用 PyTorch等深度学习框架等好处在于：
+
+* 利用深度学习框架 PyTorch，我们可以非常方便地使用各种优化器，比如，我们可以使用随机梯度下降优化器来优化我们的学习结果。
 
 ```python
 optimizer = optim.SGD(model.parameters(), lr=0.01) # 使用随机梯度下降优化器
@@ -101,18 +76,45 @@ for epoch in range(epochs):
         optimizer.step() # 使用 SGD 优化器更新权值。
 ```
 
-另外，借助深度学习框架，我们可以将我们的代码放入 GPU 执行来提高运行效率。这里，我们采用 PyTorch 自带的 `DataParallel` 在单台机器上进行多 GPU 分布式机器学习。
+* 另外，借助深度学习框架，我们可以将我们的代码放入 GPU 执行来提高运行效率。这里，我们采用 PyTorch 自带的 `DataParallel` 在单台机器上进行多 GPU 分布式机器学习。
 
 ```python
 model = DualEmbedding(user_n, movie_n, k).cuda()
 model = DataParallel(model, device_ids=gpus, output_device=gpus[0])
 ```
 
-#### 4.2.2 正则化
+#### 4.2.2 用 embedding 的方法实现矩阵分解
+
+为了便于我们在Pytorch 中实现矩阵分解，我们需要将之前的矩阵分解过程重新使用 Embedding 来理解。
+
+我们将用户矩阵和电影矩阵看作是将用户和电影映射到向量空间的一种嵌入（Embedding）。整个预测的过程如下：先分别将用户ID和电影ID转化成其对应的嵌入向量，然后将两向量点积，得到用户和电影之间的相似度，再对其使用一个激活函数（如sigmoid）得到用户对电影的评分。
+
+![embedding](pics/embedding.jpg)
+
+我们使用 pytorch 来实现如下：
+
+```python
+class DualEmbedding(nn.Module):
+    def __init__(self, user_n, movie_n, k):
+        super(DualEmbedding, self).__init__()
+        self.user_embed = nn.Embedding(user_n, k)
+        self.user_bias = nn.Embedding(user_n, 1)
+        self.movie_embed = nn.Embedding(movie_n, k)
+        self.movie_bias = nn.Embedding(movie_n, 1)
+    
+    def forward(self, user, movie):
+        user_feat = self.user_embed(user)
+        movie_feat = self.movie_embed(movie)
+        dot_product = torch.sum(user_feat * movie_feat, dim=-1)
+        result = dot_product + user_bias[user] + movie_bias[movie]
+        return torch.sigmoid(dot_product)
+```
+
+#### 4.2.3 正则化
 
 当我们矩阵分解中 K 值取的比较大的时候，我们参数的总量 $ (M + N) \times (K + 1) $ 会变得特别大，为防止过多的参数引起的过拟合问题，我们需要对整个矩阵分解过程进行正则化。
 
-即在原有最优化函数中加入正则项，为了让 Embedding 矩阵尽可能稀疏，我们使用 L1 范数进行正则化，整个最优化函数如下：（$g(x)$ 为 Logistic 函数）
+即在原有最优化函数中加入正则项，为了让 Embedding 矩阵尽可能稀疏，我们使用 L1 范数进行正则化，整个最优化函数如下：（$g(x)$ 为  Sigmoid函数）
 $$
 \min_{P,Q} \sum_\text{training} (R_{ij} - g(M_i + U_j + Q_i P_j))^2 + \lambda (\| M \|_1  + \| U \|_1  + \| P \|_1 +  \| Q \|_1)
 $$
