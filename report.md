@@ -51,6 +51,33 @@ Funk-SVD 借鉴线性回归的思想，通过最小化观察数据的平方来�
 
 其中 $\mu$ 为整个网站的平均评分； $b_u$ 为用户的评分偏置，$b_i$ 为项目的被评分偏置。
 
+#### 4.1.4 用 embedding 的方法实现矩阵分解
+
+将用户和电影通过 embedding 层压缩到 k 维度向量，然后进行向量点乘，得到用户对电影的预测评分。
+
+参考架构图如下：
+
+![embedding](pics/embedding.jpg)
+
+我们使用 pytorch 来实现：
+
+```python
+class DualEmbedding(nn.Module):
+    def __init__(self, user_n, movie_n, k):
+        super(DualEmbedding, self).__init__()
+        self.user_embed = nn.Embedding(user_n, k)
+        self.user_bias = nn.Embedding(user_n, 1)
+        self.movie_embed = nn.Embedding(movie_n, k)
+        self.movie_bias = nn.Embedding(movie_n, 1)
+    
+    def forward(self, user, movie):
+        user_feat = self.user_embed(user)
+        movie_feat = self.movie_embed(movie)
+        dot_product = torch.sum(user_feat * movie_feat, dim=-1)
+        result = dot_product + user_bias + movie_bias
+        return (torch.sigmoid(dot_product), self.l1_loss())
+```
+
 ### 4.2 算法实现
 
 #### 4.2.1 自动微分梯度下降
