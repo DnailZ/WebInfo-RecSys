@@ -1,0 +1,2 @@
+#!/bin/bash
+docker run --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all --shm-size=2gb --rm -it -p 60003:8888 -v $(pwd):$(pwd) -w $(pwd) nvcr.io/nvidia/pytorch:20.06-py3 jupyter notebook --no-browser --ip=0.0.0.0 --allow-root  --NotebookApp.max_buffer_size=214748364800 --NotebookApp.token= --notebook-dir=$(pwd) 
